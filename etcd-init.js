@@ -13,7 +13,8 @@ var PREFIX = argv['etcd-prefix'] || process.env.ETCD_PREFIX || '/envs'
 var etcd   = new Etcd(HOST, PORT)
 
 var name   = argv.name
-var exec   = argv._
+var args   = argv._
+var exec   = args.shift()
 
 if (!name || exec.length === 0)
   abort()
@@ -29,25 +30,75 @@ function abort() {
 
 function main() {
   var service = join(PREFIX, name)
-  etcd.get(service, function(err, data) {
-    var envs = _.clone(process.env)
+  var lastEnv = {}
 
-    if (data) {
-      envs = _.merge(envs, JSON.parse(data.node.value))
+  function exit(code, signal) {
+    console.log('Process Exited', code, signal)
+  }
+
+  etcd.get(service, function (err, data) {
+    var node
+    if (err) {
+      node = {}
+    }
+    else try {
+      node = JSON.parse(data.node.value)
+    }
+    catch (e) {
+      node = lastEnv
     }
 
-    var proc = spawn(exec.shift(), exec, {
-      stdio : 'pipe',
-      env   : envs
-    })
+    run(err, node)
+    .on('exit', exit)
 
-    proc.stdout.pipe(process.stdout)
-    proc.stderr.pipe(process.stderr)
-
-    proc.on('exit', function(code, signal) {
-      if (code !== 0)
-        process.exit(code || -1)
-      }
-    })
+    lastEnv = node
   })
+
+  function wait(i) {
+    etcd.watch(service, {waitIndex: i}, function (err, data) {
+      var node
+      if (err) {
+        node = {}
+      }
+      else try {
+        node = JSON.parse(data.node.value)
+      } catch (e) {
+        node = lastEnv
+      }
+
+      console.log(lastEnv, node)
+      var same = _.isEqual(lastEnv, node)
+
+      if (same) {
+        console.log('Config Unchanged')
+      }
+      else run(err, node).on('exit', exit)
+
+      setImmediate(wait, data.node.modifiedIndex + 1)
+
+      lastEnv = node
+    })
+  }
+
+  wait(0)
+}
+
+function run(err, data) {
+  var envs = _.clone(process.env)
+
+  if (data) {
+    console.log(data)
+
+    envs = _.merge(envs, data)
+  }
+
+  var proc = spawn(exec, args, {
+    stdio : 'pipe',
+    env   : envs
+  })
+
+  proc.stdout.pipe(process.stdout)
+  proc.stderr.pipe(process.stderr)
+
+  return proc
 }
