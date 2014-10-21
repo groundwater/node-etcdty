@@ -6,17 +6,16 @@ var spawn  = require('child_process').spawn
 var Etcd   = require('node-etcd')
 var argv   = require('minimist')(process.argv.slice(2))
 
-var HOST   = argv['etcd-host']   || process.env.ETCD_HOST   || 'localhost'
-var PORT   = argv['etcd-port']   || process.env.ETCD_PORT   || 4001
-var PREFIX = argv['etcd-prefix'] || process.env.ETCD_PREFIX || '/envs'
+var HOST   = argv['etcd-host'] || process.env.ETCD_HOST || 'localhost'
+var PORT   = argv['etcd-port'] || process.env.ETCD_PORT || 4001
 
 var etcd   = new Etcd(HOST, PORT)
 
-var name   = argv.name
+var path   = argv.path
 var args   = argv._
 var exec   = args.shift()
 
-if (!name || exec.length === 0)
+if (!path || exec.length === 0)
   abort()
 else
   main()
@@ -24,12 +23,12 @@ else
 return //------------------
 
 function abort() {
-  console.error('this is bad')
+  console.error('Usage: etcd-init --path=ETCD_PATH -- APP COMMANDS')
   process.exit(1)
 }
 
 function main() {
-  var service = join(PREFIX, name)
+  var service = path
   var lastEnv = {}
 
   function exit(code, signal) {
@@ -66,7 +65,6 @@ function main() {
         node = lastEnv
       }
 
-      console.log(lastEnv, node)
       var same = _.isEqual(lastEnv, node)
 
       if (same) {
@@ -87,8 +85,6 @@ function run(err, data) {
   var envs = _.clone(process.env)
 
   if (data) {
-    console.log(data)
-
     envs = _.merge(envs, data)
   }
 
